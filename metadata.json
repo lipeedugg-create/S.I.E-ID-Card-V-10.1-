@@ -1,0 +1,7 @@
+{
+  "name": "S.I.E ID Card V 10.1 - Sistema Inteligente Ativo",
+  "description": "Plataforma completa para gestão de associações, condomínios e comunidades com financeiro, comunicação, mapas inteligentes e controle de acesso.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
