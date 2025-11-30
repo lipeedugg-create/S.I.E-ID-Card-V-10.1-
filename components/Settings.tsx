@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { AVAILABLE_ROLES, SYSTEM_PERMISSIONS } from '../constants';
 import { SystemInfo, IdCardTemplate, CardElement, User, Permission, OfficialDocument } from '../types';
@@ -8,7 +7,7 @@ import {
   Move, Type, MousePointer2, Layers, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   ArrowUp, ArrowDown, Maximize, AlertCircle, Grid3X3, Eye, Settings2, UserCheck, Lock, RefreshCw, CheckSquare, Square, UserPlus,
   Cpu, MessageCircle, Landmark, Globe, EyeOff, Link as LinkIcon, AlertTriangle, FileText,
-  Bot, Paperclip, Send, FileCheck, ScanLine, Bold, Italic, Underline, File, Palette, Minimize
+  Bot, Paperclip, Send, FileCheck, ScanLine, Bold, Italic, Underline, File
 } from 'lucide-react';
 
 interface SettingsProps {
@@ -48,7 +47,6 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [isAnalyzingRef, setIsAnalyzingRef] = useState(false);
-  const [selectedImg, setSelectedImg] = useState<HTMLImageElement | null>(null); // For resizing
   const refFileInput = useRef<HTMLInputElement>(null);
   const docEditorRef = useRef<HTMLDivElement>(null);
   const docImageInputRef = useRef<HTMLInputElement>(null);
@@ -331,23 +329,6 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
               }
           };
           reader.readAsDataURL(files[0]);
-      }
-  };
-
-  const handleEditorClick = (e: React.MouseEvent) => {
-      if (e.target instanceof HTMLImageElement) {
-          setSelectedImg(e.target);
-      } else {
-          setSelectedImg(null);
-      }
-  };
-
-  const resizeImage = (percentage: number) => {
-      if (selectedImg) {
-          selectedImg.style.width = `${percentage}%`;
-          if (docEditorRef.current && activeDocId) {
-              handleUpdateDoc({ content: docEditorRef.current.innerHTML });
-          }
       }
   };
 
@@ -758,11 +739,11 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
                       </div>
 
                       {/* CENTER: EDITOR */}
-                      <div className="flex-1 bg-slate-600 rounded-2xl border border-slate-700 flex flex-col overflow-hidden relative shadow-inner">
+                      <div className="flex-1 bg-slate-100 rounded-2xl border border-slate-200 flex flex-col overflow-hidden relative shadow-inner">
                           {activeDoc ? (
                               <>
                                 {/* Editor Toolbar */}
-                                <div className="p-2 border-b border-slate-200 bg-white flex items-center justify-between gap-2 z-10 sticky top-0 shadow-sm flex-wrap">
+                                <div className="p-2 border-b border-slate-200 bg-white flex items-center justify-between gap-2 z-10 sticky top-0 shadow-sm">
                                     <div className="flex items-center gap-1">
                                         <button onClick={() => execCmd('bold')} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Negrito"><Bold size={16}/></button>
                                         <button onClick={() => execCmd('italic')} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Itálico"><Italic size={16}/></button>
@@ -773,50 +754,10 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
                                         <button onClick={() => execCmd('justifyRight')} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Direita"><AlignRight size={16}/></button>
                                         <button onClick={() => execCmd('justifyFull')} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Justificado"><AlignJustify size={16}/></button>
                                         <div className="w-px h-6 bg-slate-200 mx-1"></div>
-                                        
-                                        {/* Font Family */}
-                                        <select onChange={(e) => execCmd('fontName', e.target.value)} className="w-24 p-1.5 text-xs border border-slate-200 rounded-lg outline-none cursor-pointer hover:bg-slate-50">
-                                            <option value="Arial">Arial</option>
-                                            <option value="Times New Roman">Times</option>
-                                            <option value="Courier New">Courier</option>
-                                            <option value="Georgia">Georgia</option>
-                                            <option value="Verdana">Verdana</option>
-                                        </select>
-
-                                        {/* Font Size */}
-                                        <select onChange={(e) => execCmd('fontSize', e.target.value)} className="w-16 p-1.5 text-xs border border-slate-200 rounded-lg outline-none cursor-pointer hover:bg-slate-50" title="Tamanho da Fonte">
-                                            <option value="1">10px</option>
-                                            <option value="2">13px</option>
-                                            <option value="3">16px</option>
-                                            <option value="4">18px</option>
-                                            <option value="5">24px</option>
-                                            <option value="6">32px</option>
-                                            <option value="7">48px</option>
-                                        </select>
-
-                                        {/* Color Picker */}
-                                        <label className="p-2 hover:bg-slate-100 rounded cursor-pointer relative flex items-center justify-center" title="Cor do Texto">
-                                            <Palette size={16} className="text-slate-600"/>
-                                            <input type="color" className="absolute opacity-0 w-full h-full cursor-pointer" onChange={(e) => execCmd('foreColor', e.target.value)} />
-                                        </label>
-
-                                        <div className="w-px h-6 bg-slate-200 mx-1"></div>
                                         <input type="file" ref={docImageInputRef} className="hidden" accept="image/*" onChange={handleImageUploadEditor}/>
                                         <button onClick={() => docImageInputRef.current?.click()} className="p-2 hover:bg-slate-100 rounded text-slate-600" title="Inserir Imagem"><ImageIcon size={16}/></button>
                                     </div>
-
-                                    {/* Image Resize Controls (Visible when image selected) */}
-                                    {selectedImg && (
-                                        <div className="flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 animate-fade-in">
-                                            <span className="text-[10px] font-bold text-indigo-700 uppercase mr-1">Imagem:</span>
-                                            <button onClick={() => resizeImage(25)} className="px-2 py-1 bg-white rounded text-[10px] font-bold text-indigo-600 hover:bg-indigo-100">25%</button>
-                                            <button onClick={() => resizeImage(50)} className="px-2 py-1 bg-white rounded text-[10px] font-bold text-indigo-600 hover:bg-indigo-100">50%</button>
-                                            <button onClick={() => resizeImage(100)} className="px-2 py-1 bg-white rounded text-[10px] font-bold text-indigo-600 hover:bg-indigo-100">100%</button>
-                                            <button onClick={() => resizeImage(0)} title="Tamanho Original" className="px-2 py-1 bg-white rounded text-[10px] font-bold text-indigo-600 hover:bg-indigo-100"><Maximize size={10}/></button>
-                                        </div>
-                                    )}
-
-                                    <div className="flex items-center gap-2 ml-auto">
+                                    <div className="flex items-center gap-2">
                                         <select 
                                             value={activeDoc.pageSize || 'A4'} 
                                             onChange={(e) => handleUpdateDoc({ pageSize: e.target.value as any })}
@@ -863,7 +804,7 @@ const Settings: React.FC<SettingsProps> = ({ systemInfo, onUpdateSystemInfo, tem
                                 </div>
 
                                 {/* Main Editor Area (Paper Simulation) */}
-                                <div className="flex-1 overflow-auto bg-slate-600 p-8 flex justify-center custom-scrollbar" onDrop={handleEditorDrop} onDragOver={(e) => e.preventDefault()} onClick={handleEditorClick}>
+                                <div className="flex-1 overflow-auto bg-slate-100 p-8 flex justify-center custom-scrollbar" onDrop={handleEditorDrop} onDragOver={(e) => e.preventDefault()}>
                                     <div 
                                         ref={docEditorRef}
                                         contentEditable
