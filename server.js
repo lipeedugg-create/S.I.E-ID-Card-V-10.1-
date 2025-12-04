@@ -326,7 +326,7 @@ app.get('/api/incidents', authenticateToken, async (req, res) => {
 
 app.post('/api/incidents', authenticateToken, async (req, res) => {
     const i = req.body;
-    const [result] = await pool.query(`INSERT INTO incidents (title, location, priority, status, reported_by) VALUES (?, ?, ?, ?, ?)`, [i.title, i.location, i.priority, i.status, req.user.id]);
+    const [result] = await pool.query(`INSERT INTO incidents (title, location, priority, status, reported_by) VALUES (?, ?, ?, ?, ?)`, [i.title, i.location, i.priority, i.status, reported_by: req.user.id]);
     res.json({ id: result.insertId, ...i });
 });
 
@@ -415,9 +415,9 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
 });
 
 app.post('/api/ai/analyze-doc', authenticateToken, upload.single('document'), async (req, res) => {
-    if (!req.file || !process.env.GEMINI_API_KEY) return res.status(400).json({ error: 'Arquivo ou API Key faltando' });
+    if (!req.file || !process.env.API_KEY) return res.status(400).json({ error: 'Arquivo ou API Key faltando' });
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
         const fileData = fs.readFileSync(req.file.path).toString('base64');
         const prompt = `Analise este documento. Retorne APENAS um JSON válido (sem markdown) com os seguintes campos se encontrados: name, cpfCnpj, rg, birthDate (YYYY-MM-DD), address.`;
@@ -445,10 +445,10 @@ app.post('/api/ai/analyze-doc', authenticateToken, upload.single('document'), as
 // SECRETÁRIA ATIVA: Gerar Texto de Documento
 app.post('/api/ai/generate-document', authenticateToken, async (req, res) => {
     const { prompt, referenceText } = req.body;
-    if (!process.env.GEMINI_API_KEY) return res.status(400).json({ error: 'API Key faltando' });
+    if (!process.env.API_KEY) return res.status(400).json({ error: 'API Key faltando' });
 
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const systemInstruction = `Você é uma secretária administrativa experiente. 
         Sua tarefa é redigir documentos oficiais (atas, ofícios, circulares) com linguagem formal e técnica.
         Retorne EXCLUSIVAMENTE o conteúdo HTML (dentro de uma <div>) para ser inserido em um editor WYSIWYG.
