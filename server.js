@@ -227,6 +227,34 @@ app.get('/api/settings/templates', authenticateToken, async (req, res) => {
     }
 });
 
+app.put('/api/settings/templates', authenticateToken, async (req, res) => {
+    const templates = req.body;
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        for (const t of templates) {
+            await conn.query(
+                `INSERT INTO id_card_templates (id, name, width, height, orientation, front_background, back_background, elements_json)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE 
+                 name=?, width=?, height=?, orientation=?, front_background=?, back_background=?, elements_json=?`,
+                [
+                    t.id, t.name, t.width, t.height, t.orientation, t.frontBackground, t.backBackground, JSON.stringify(t.elements),
+                    t.name, t.width, t.height, t.orientation, t.frontBackground, t.backBackground, JSON.stringify(t.elements)
+                ]
+            );
+        }
+        await conn.commit();
+        res.json({ success: true, message: 'Templates salvos com sucesso' });
+    } catch (err) {
+        await conn.rollback();
+        console.error(err);
+        res.status(500).json({ error: 'Erro ao salvar templates' });
+    } finally {
+        conn.release();
+    }
+});
+
 // --- OFFICIAL DOCUMENTS (CRUD) ---
 app.get('/api/documents', authenticateToken, async (req, res) => {
     try {
@@ -281,8 +309,8 @@ app.get('/api/financials', authenticateToken, async (req, res) => {
 app.post('/api/financials', authenticateToken, async (req, res) => {
     const f = req.body;
     const [result] = await pool.query(
-        `INSERT INTO financial_records (description, amount, type, status, date, category, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [f.description, f.amount, f.type, f.status, f.date, f.category, f.userId || null]
+        `INSERT INTO financial_records (description, amount, type, status, date, category, user_id, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [f.description, f.amount, f.type, f.status, f.date, f.category, f.userId || null, f.dueDate || null]
     );
     res.json({ id: result.insertId, ...f });
 });
@@ -306,6 +334,70 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
     }
 });
 
+// --- BILLS (BOLETOS) ---
+app.get('/api/bills', authenticateToken, async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT b.*, u.name as userName, u.unit 
+            FROM bills b 
+            JOIN users u ON b.user_id = u.id 
+            ORDER BY b.due_date DESC
+        `);
+        const bills = rows.map(b => ({
+            id: b.id,
+            userId: b.user_id,
+            userName: b.userName,
+            unit: b.unit,
+            amount: b.amount,
+            dueDate: b.due_date,
+            status: b.status,
+            barcode: b.barcode,
+            month: b.month_ref
+        }));
+        res.json(bills);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/bills/generate', authenticateToken, async (req, res) => {
+    const { monthRef, dueDate } = req.body;
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const [users] = await conn.query(`
+            SELECT u.id, ufs.monthly_fee, ufs.donation_amount 
+            FROM users u 
+            JOIN user_financial_settings ufs ON u.id = ufs.user_id 
+            WHERE u.active = 1 AND ufs.auto_generate_charge = 1
+        `);
+
+        const generatedBills = [];
+        for (const u of users) {
+            const amount = Number(u.monthly_fee) + Number(u.donation_amount);
+            if (amount <= 0) continue;
+            const barcode = `34191.79001 01043.51004 7 ${Date.now()}${u.id} 1 800000${amount.toFixed(0)}`;
+            const [result] = await conn.query(
+                `INSERT INTO bills (user_id, amount, month_ref, due_date, status, barcode) VALUES (?, ?, ?, ?, 'PENDING', ?)`,
+                [u.id, amount, monthRef, dueDate, barcode]
+            );
+            await conn.query(
+                `INSERT INTO financial_records (description, amount, type, status, date, due_date, category, user_id) 
+                 VALUES (?, ?, 'INCOME', 'PENDING', NOW(), ?, 'Mensalidade', ?)`,
+                [`Mensalidade ${monthRef}`, amount, dueDate, u.id]
+            );
+            generatedBills.push(result.insertId);
+        }
+        await conn.commit();
+        res.json({ message: `${generatedBills.length} boletos gerados.`, count: generatedBills.length });
+    } catch (err) {
+        await conn.rollback();
+        res.status(500).json({ error: err.message });
+    } finally {
+        conn.release();
+    }
+});
+
 // --- OPERATIONS ---
 app.get('/api/reservations', authenticateToken, async (req, res) => {
     const [rows] = await pool.query('SELECT r.*, u.name as resident FROM reservations r LEFT JOIN users u ON r.user_id = u.id ORDER BY date DESC');
@@ -326,7 +418,7 @@ app.get('/api/incidents', authenticateToken, async (req, res) => {
 
 app.post('/api/incidents', authenticateToken, async (req, res) => {
     const i = req.body;
-    const [result] = await pool.query(`INSERT INTO incidents (title, location, priority, status, reported_by) VALUES (?, ?, ?, ?, ?)`, [i.title, i.location, i.priority, i.status, reported_by: req.user.id]);
+    const [result] = await pool.query(`INSERT INTO incidents (title, location, priority, status, reported_by) VALUES (?, ?, ?, ?, ?)`, [i.title, i.location, i.priority, i.status, req.user.id]);
     res.json({ id: result.insertId, ...i });
 });
 
@@ -414,11 +506,16 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
     res.json({ url, filename: req.file.filename });
 });
 
+app.post('/api/upload/avatar', authenticateToken, upload.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).send('Nenhum arquivo enviado');
+    const url = `/uploads/${req.file.filename}`;
+    res.json({ url, filename: req.file.filename });
+});
+
 app.post('/api/ai/analyze-doc', authenticateToken, upload.single('document'), async (req, res) => {
     if (!req.file || !process.env.API_KEY) return res.status(400).json({ error: 'Arquivo ou API Key faltando' });
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        
         const fileData = fs.readFileSync(req.file.path).toString('base64');
         const prompt = `Analise este documento. Retorne APENAS um JSON válido (sem markdown) com os seguintes campos se encontrados: name, cpfCnpj, rg, birthDate (YYYY-MM-DD), address.`;
         
@@ -442,7 +539,6 @@ app.post('/api/ai/analyze-doc', authenticateToken, upload.single('document'), as
     }
 });
 
-// SECRETÁRIA ATIVA: Gerar Texto de Documento
 app.post('/api/ai/generate-document', authenticateToken, async (req, res) => {
     const { prompt, referenceText } = req.body;
     if (!process.env.API_KEY) return res.status(400).json({ error: 'API Key faltando' });
@@ -457,13 +553,8 @@ app.post('/api/ai/generate-document', authenticateToken, async (req, res) => {
 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: {
-                role: 'user',
-                parts: [{ text: `Escreva um documento sobre: ${prompt}` }]
-            },
-            config: {
-                systemInstruction: systemInstruction
-            }
+            contents: { role: 'user', parts: [{ text: `Escreva um documento sobre: ${prompt}` }] },
+            config: { systemInstruction: systemInstruction }
         });
 
         res.json({ text: response.text });

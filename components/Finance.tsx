@@ -1,12 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
 import { FinancialRecord, Bill } from '../types';
-import { financialService } from '../services/api';
+import { financialService, billingService } from '../services/api';
 import { 
     Download, Filter, Plus, MoreHorizontal, Users, RefreshCw, 
     TrendingUp, TrendingDown, FileText, 
     CheckCircle, Printer, Search, ArrowUpRight, X,
-    Calendar, PieChart, AlertCircle
+    Calendar, PieChart, AlertCircle, CreditCard
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
@@ -50,7 +49,11 @@ const Finance: React.FC<FinanceProps> = ({ transactions, onUpdateTransactions })
               // Carrega transações reais do backend
               const res = await financialService.getAll();
               onUpdateTransactions(res.data);
-              // TODO: Implementar endpoint de boletos (bills) no backend se necessário
+              
+              if (activeTab === 'BILLING') {
+                  const billsRes = await billingService.getBills();
+                  setBills(billsRes.data);
+              }
           } catch (error) {
               console.error("Erro ao carregar financeiro", error);
           } finally {
@@ -58,17 +61,17 @@ const Finance: React.FC<FinanceProps> = ({ transactions, onUpdateTransactions })
           }
       };
       
-      // Carregar apenas se a lista estiver vazia (primeira carga)
-      if (transactions.length === 0) {
+      // Carregar apenas se a lista estiver vazia (primeira carga) ou mudou de aba
+      if (transactions.length === 0 || activeTab === 'BILLING') {
           loadData();
       }
-  }, []);
+  }, [activeTab]);
 
   // --- ESTATÍSTICAS ---
   const totalIncome = transactions.filter(t => t.type === 'INCOME').reduce((acc, curr) => acc + Number(curr.amount), 0);
   const totalExpense = transactions.filter(t => t.type === 'EXPENSE').reduce((acc, curr) => acc + Number(curr.amount), 0);
   const balance = totalIncome - totalExpense;
-  const overdueAmount = bills.filter(b => b.status === 'OVERDUE').reduce((acc, curr) => acc + curr.amount, 0);
+  const overdueAmount = bills.filter(b => b.status === 'OVERDUE').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
   const chartData = [
       { name: 'Receitas', value: totalIncome, color: '#10b981' },
@@ -104,6 +107,26 @@ const Finance: React.FC<FinanceProps> = ({ transactions, onUpdateTransactions })
       }
   };
 
+  const handleGenerateBills = async () => {
+      if (!confirm('Deseja gerar boletos para todos os moradores ativos?')) return;
+      setIsGenerating(true);
+      try {
+          const today = new Date();
+          const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 10);
+          const monthRef = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+          
+          await billingService.generateBills(monthRef, nextMonth.toISOString().slice(0, 10));
+          
+          const billsRes = await billingService.getBills();
+          setBills(billsRes.data);
+          alert('Boletos gerados com sucesso!');
+      } catch (error) {
+          alert('Erro ao gerar boletos');
+      } finally {
+          setIsGenerating(false);
+      }
+  };
+
   const StatusBadge = ({ status }: { status: string }) => {
       const config = {
           PAID: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Pago' },
@@ -122,7 +145,7 @@ const Finance: React.FC<FinanceProps> = ({ transactions, onUpdateTransactions })
           <p className="text-sm text-slate-500 mt-1 font-medium">Fluxo de caixa real e controle orçamentário.</p>
         </div>
         <div className="flex bg-white rounded-xl p-1.5 shadow-sm border border-slate-200">
-             {[{ id: 'DASHBOARD', label: 'Visão Geral', icon: TrendingUp }, { id: 'TRANSACTIONS', label: 'Lançamentos', icon: FileText }].map(tab => (
+             {[{ id: 'DASHBOARD', label: 'Visão Geral', icon: TrendingUp }, { id: 'TRANSACTIONS', label: 'Lançamentos', icon: FileText }, { id: 'BILLING', label: 'Cobranças', icon: CreditCard }].map(tab => (
                  <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50 hover:text-indigo-600'}`}>
                      <tab.icon size={16}/> {tab.label}
                  </button>
@@ -145,6 +168,10 @@ const Finance: React.FC<FinanceProps> = ({ transactions, onUpdateTransactions })
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Despesas (Total)</p>
                       <h3 className="text-2xl font-bold text-rose-600">R$ {totalExpense.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</h3>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Inadimplência</p>
+                      <h3 className="text-2xl font-bold text-amber-600">R$ {overdueAmount.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</h3>
                   </div>
               </div>
 
@@ -177,6 +204,13 @@ const Finance: React.FC<FinanceProps> = ({ transactions, onUpdateTransactions })
                           </div>
                           <ArrowUpRight size={16} className="text-slate-400"/>
                       </button>
+                      <button onClick={() => { setActiveTab('BILLING'); }} className="w-full flex items-center justify-between p-4 bg-white rounded-xl border border-slate-200 hover:border-emerald-300 hover:shadow-md transition-all group mb-3">
+                          <div className="flex items-center gap-3">
+                              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><CreditCard size={18}/></div>
+                              <span className="font-bold text-slate-700 text-sm">Gerar Boletos</span>
+                          </div>
+                          <ArrowUpRight size={16} className="text-slate-400"/>
+                      </button>
                   </div>
               </div>
           </div>
@@ -184,7 +218,6 @@ const Finance: React.FC<FinanceProps> = ({ transactions, onUpdateTransactions })
 
       {activeTab === 'TRANSACTIONS' && (
           <div className="bg-white rounded-2xl shadow-md border border-slate-100 overflow-hidden animate-fade-in">
-             {/* Toolbar e Filtros (Mantidos Visualmente) */}
              <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                  <div className="relative">
                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -230,6 +263,44 @@ const Finance: React.FC<FinanceProps> = ({ transactions, onUpdateTransactions })
           </div>
       )}
 
+      {activeTab === 'BILLING' && (
+          <div className="bg-white rounded-2xl shadow-md border border-slate-100 overflow-hidden animate-fade-in">
+              <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                  <h3 className="font-bold text-slate-800">Boletos Emitidos</h3>
+                  <button onClick={handleGenerateBills} disabled={isGenerating} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-lg disabled:opacity-50">
+                      {isGenerating ? <RefreshCw className="animate-spin" size={14}/> : <Plus size={14}/>} Gerar em Massa
+                  </button>
+              </div>
+              <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                      <thead className="bg-slate-50 border-b border-slate-100">
+                          <tr>
+                              <th className="p-5 text-xs font-bold text-slate-500 uppercase">Morador</th>
+                              <th className="p-5 text-xs font-bold text-slate-500 uppercase">Vencimento</th>
+                              <th className="p-5 text-xs font-bold text-slate-500 uppercase">Valor</th>
+                              <th className="p-5 text-xs font-bold text-slate-500 uppercase">Status</th>
+                              <th className="p-5 text-xs font-bold text-slate-500 uppercase text-right">Ações</th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                          {bills.map(bill => (
+                              <tr key={bill.id} className="hover:bg-slate-50">
+                                  <td className="p-5 text-sm font-bold text-slate-800">{bill.userName} <span className="text-slate-400 font-normal ml-1">({bill.unit})</span></td>
+                                  <td className="p-5 text-sm font-medium text-slate-600">{new Date(bill.dueDate).toLocaleDateString()}</td>
+                                  <td className="p-5 text-sm font-bold text-emerald-600">R$ {Number(bill.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+                                  <td className="p-5"><StatusBadge status={bill.status} /></td>
+                                  <td className="p-5 text-right">
+                                      <button className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg tooltip" title="Imprimir"><Printer size={16}/></button>
+                                  </td>
+                              </tr>
+                          ))}
+                          {bills.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400">Nenhum boleto gerado.</td></tr>}
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+      )}
+
       {/* CREATE MODAL */}
       {isModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
@@ -239,7 +310,6 @@ const Finance: React.FC<FinanceProps> = ({ transactions, onUpdateTransactions })
                       <button onClick={() => setIsModalOpen(false)}><X size={24} className="text-slate-400 hover:text-slate-600"/></button>
                   </div>
                   <div className="p-6 space-y-4">
-                      {/* ... (Formulário igual ao original, mantido pela brevidade, mas conectado aos estados) ... */}
                       <div className="flex bg-slate-100 p-1 rounded-xl">
                           <button onClick={() => setNewTransaction({...newTransaction, type: 'INCOME'})} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newTransaction.type === 'INCOME' ? 'bg-emerald-500 text-white' : 'text-slate-500'}`}>Receita</button>
                           <button onClick={() => setNewTransaction({...newTransaction, type: 'EXPENSE'})} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newTransaction.type === 'EXPENSE' ? 'bg-rose-500 text-white' : 'text-slate-500'}`}>Despesa</button>

@@ -45,7 +45,7 @@ export const userService = {
   uploadFile: (formData: FormData) => api.post('/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
-  uploadAvatar: (formData: FormData) => api.post('/upload', formData, {
+  uploadAvatar: (formData: FormData) => api.post('/upload/avatar', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
 };
@@ -55,6 +55,11 @@ export const financialService = {
   create: (data: any) => api.post('/financials', data),
   getSummary: () => api.get('/financials/summary'),
   getDashboardStats: () => api.get('/dashboard/stats'),
+};
+
+export const billingService = {
+    getBills: () => api.get('/bills'),
+    generateBills: (monthRef: string, dueDate: string) => api.post('/bills/generate', { monthRef, dueDate })
 };
 
 export const systemService = {
